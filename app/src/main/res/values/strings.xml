@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">SMS Alfanuméricos</string>
+    <string name="action_settings">Settings</string>
+    <string name="button_send">Enviar</string>
+    <string name="edit_message">Hola</string>
+    <string name="edit_lanumber">ACME</string>
+    <string name="numeric_lanumber">1010</string>
+    <string name="titulo">Prueba de concepto:\nEnvío de SMS Alfanuméricos P2A</string>
+</resources>
+
