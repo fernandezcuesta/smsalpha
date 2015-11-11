@@ -26,7 +26,7 @@ public class SMSAlpha extends AppCompatActivity {
 /*
     SMS-SUBMIT fields
 
-    Byte 1:     00100001
+    Byte 1:     00100001  (0x21)
         TP-MTI: 01 (SMS-SUBMIT)
         TP-RD
         TP-VPF
@@ -46,6 +46,12 @@ public class SMSAlpha extends AppCompatActivity {
     Bytes 8+N - end:
         TP-UD (user data)
  */
+
+    public static final byte GSM_EXTENDED_ESCAPE = 0x1B;
+    public static final byte ALPHANUMERIC_TOA = 0x68;
+    public static final int MAX_USER_DATA_BYTES = 140;
+
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -129,36 +135,60 @@ public class SMSAlpha extends AppCompatActivity {
         }
 
         String la_number = laDestination.getText().toString();
+        boolean isChecked = ((Switch) findViewById(R.id.switchalpha)).isChecked();
 
         if (la_number.isEmpty()) {
             // Send it to the la_destination hint in case nothing given.
-            la_number = getResources().getString(R.string.edit_lanumber);
+            la_number = (isChecked ?
+                         getResources().getString(R.string.edit_lanumber) :
+                         getResources().getString(R.string.numeric_lanumber)
+            );
         }
 
+        byte [] destinationAddress;
 
-        String destino;
 
-        boolean isChecked = ((Switch) findViewById(R.id.switchalpha)).isChecked();
         if (isChecked) {
-            destino = bytesToHex(stringToGsm7BitPacked(la_number, 0));
-            String dest_len = destino.substring(0, 1);  // first byte
-            byte [] TOA = new byte[1];
-            TOA[0] = ALPHANUMERIC_TOA;
-            destino = dest_len + bytesToHex(TOA) + destino.substring(2);
+            destinationAddress = stringToGsm7BitPacked(la_number, 0);
         }
         else{
-            byte[] destino_bcd = PhoneNumberUtils.networkPortionToCalledPartyBCD(la_number);
-            destino = bytesToHex(destino_bcd);
+            destinationAddress = PhoneNumberUtils.networkPortionToCalledPartyBCDWithLength(
+                    la_number);
         }
 
-        String ms7b = bytesToHex(stringToGsm7BitPacked(textContent, 0));
+        for (int i = 0; i < messageCount; i++) {
+            byte[] sms_content = stringToGsm7BitPacked(messages.get(i), 0);
+            ByteArrayOutputStream bo = getSubmitPduHead(
+                    destinationAddress,
+                    true,  // TODO: cambiar con un setting
+                    isChecked);
+            bo.write(sms_content, 0, sms_content.length); // TP-UDL and TP-UD
+        smsmanager.injectSmsPdu(bo.toByteArray(), "3gpp", null);
+        }
+
+        byte[] sms_content = stringToGsm7BitPacked(textContent, 0);
+        String ms7b = bytesToHex(sms_content);
+        String destino = bytesToHex(destinationAddress);
 
         // Mensaje de confirmación
         Snackbar.make(view, destino.concat(" > enviando mensaje: ".concat(ms7b)), Snackbar.LENGTH_LONG)
                 .setAction("Action", null).show();
+    }
 
-//        smsmanager.sendMultipartTextMessage(la_number, null, messages, null, null);
-//        smsmanager.injectSmsPdu(pdu_alfa, "3gpp");
+    private static ByteArrayOutputStream getSubmitPduHead(
+            byte [] destinationAddress, boolean statusReportRequested, boolean alphanumericAddress)
+    {
+        ByteArrayOutputStream bo = new ByteArrayOutputStream(
+                MAX_USER_DATA_BYTES + 40);
+
+        bo.write(0x01 | (statusReportRequested ? 0x20 : 0x00)); // SUBMIT-PDU MTU + SRR
+        bo.write(0x01); // TP-MR
+        bo.write(destinationAddress, 0, 1);  // Length from CalledPartyBCDWithLength
+        bo.write((alphanumericAddress ? 0x68 : 0x81)); // TOA
+        bo.write(destinationAddress, 1, destinationAddress[0]); // CalledPartyBCD (w/o length)
+        bo.write(0x00); // TP-PID
+        bo.write(0x00); // TP-DCS
+        return bo;
     }
 
     final protected static char[] hexArray = "0123456789ABCDEF".toCharArray();
@@ -203,11 +233,7 @@ public class SMSAlpha extends AppCompatActivity {
         return ret;
     }
 
-    public static final byte GSM_EXTENDED_ESCAPE = 0x1B;
-    public static final byte ALPHANUMERIC_TOA = 0x68;
-
-    private static void
-    packSmsChar(byte[] packedChars, int bitOffset, int value) {
+    private static void packSmsChar(byte[] packedChars, int bitOffset, int value) {
         int byteOffset = bitOffset / 8;
         int shift = bitOffset % 8;
         packedChars[++byteOffset] |= value << shift;
